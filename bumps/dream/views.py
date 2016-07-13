@@ -23,11 +23,14 @@ def plot_all(state, portion=1.0, figfile=None):
 
     draw = state.draw(portion=portion)
     all_vstats = var_stats(draw)
+    print(format_vars(all_vstats))
+    print("\nStatistics and plots based on {nsamp:.3g} samples "
+          "({psamp:.1%} of total samples drawn)".format( \
+          nsamp=len(draw.points), psamp=portion))
     figure()
     plot_vars(draw, all_vstats)
     if state.title:
         suptitle(state.title)
-    print(format_vars(all_vstats))
     if figfile is not None:
         savefig(figfile+"-vars")
     figure()
