@@ -62,6 +62,7 @@ class StepMonitor(monitor.Monitor):
             raise ValueError("invalid monitor field")
         self.fid = fid
         self.fields = fields
+        self.problem = problem
         self._pattern = "%%(%s)s\n" % (")s %(".join(fields))
         fid.write("# " + ' '.join(fields) + '\n')
 
@@ -182,12 +183,12 @@ class MultiStart(FitBase):
         f_best = np.inf
         x_best = self.problem.getp()
         for _ in range(max(starts, 1)):
-            logging.info("multistart round %d"%_)
+            logging.info("multistart round %d", _)
             x, fx = self.fitter.solve(monitors=monitors, mapper=mapper,
                                       **options)
             if fx < f_best:
                 x_best, f_best = x, fx
-                logging.info("multistart f(x),x: %s %s"%(str(fx),str(x_best)))
+                logging.info("multistart f(x),x: %s %s", str(fx), str(x_best))
             if reset:
                 self.problem.randomize()
             else:
@@ -208,7 +209,7 @@ class DEFit(FitBase):
     id = "de"
     settings = [('steps', 1000), ('pop', 10), ('CR', 0.9), ('F', 2.0),
                 ('ftol', 1e-8), ('xtol', 1e-6), #('stop', ''),
-                ]
+               ]
 
     def solve(self, monitors=None, abort_test=None, mapper=None, **options):
         if abort_test is None:
@@ -322,7 +323,7 @@ class BFGSFit(FitBase):
                              steptol=1e-12,
                              macheps=1e-8,
                              eta=1e-8,
-                             )
+                            )
         self.result = result
         #code = result['status']
         #from .quasinewton import STATUS
@@ -439,8 +440,8 @@ class PTFit(FitBase):
         self._update = MonitorRunner(problem=self.problem,
                                      monitors=monitors)
         t = np.logspace(np.log10(options['Tmin']),
-                           np.log10(options['Tmax']),
-                           options['nT'])
+                        np.log10(options['Tmax']),
+                        options['nT'])
         history = parallel_tempering(nllf=self.problem.nllf,
                                      p=self.problem.getp(),
                                      bounds=self.problem.bounds(),
@@ -553,7 +554,8 @@ class LevenbergMarquardtFit(FitBase):
         # Force the fit point into the valid region
         stray = self._stray_delta(p)
         stray_cost = np.sum(stray**2)
-        if stray_cost > 0: stray_cost += 1e6
+        if stray_cost > 0:
+            stray_cost += 1e6
         self.problem.setp(p + stray)
         # treat prior probabilities on the parameters as additional
         # measurements
@@ -821,8 +823,10 @@ class FitDriver(object):
 
     def fit(self, resume=None):
 
-        if hasattr(self, '_cov'): del self._cov
-        if hasattr(self, '_stderr'): del self._stderr
+        if hasattr(self, '_cov'):
+            del self._cov
+        if hasattr(self, '_stderr'):
+            del self._stderr
         fitter = self.fitclass(self.problem)
         if resume:
             fitter.load(resume)
@@ -830,11 +834,11 @@ class FitDriver(object):
         if starts > 1:
             fitter = MultiStart(fitter)
         t0 = time.clock()
+        self.fitter = fitter
         x, fx = fitter.solve(monitors=self.monitors,
                              abort_test=self.abort_test,
                              mapper=self.mapper,
                              **self.options)
-        self.fitter = fitter
         self.time = time.clock() - t0
         self.result = x, fx
         if x is not None:
@@ -849,7 +853,7 @@ class FitDriver(object):
             return entropy.cov_entropy(self.cov()), 0
 
     def cov(self):
-        """
+        r"""
         Return an estimate of the covariance of the fit.
 
         Depending on the fitter and the problem, this may be computed from
@@ -914,10 +918,9 @@ class FitDriver(object):
         norm = np.sqrt(self.problem.chisq())
         print("=== Uncertainty est. from curvature: par    dx           dx/sqrt(chisq) ===")
         for k, v, dv in zip(self.problem.labels(), self.problem.getp(), err):
-            print("%40s %-15s %-15s" %(k,
-                                       format_uncertainty(v, dv),
-                                       format_uncertainty(v, dv/norm),
-                                       ))
+            print("%40s %-15s %-15s" % (k,
+                  format_uncertainty(v, dv),
+                  format_uncertainty(v, dv/norm)))
         print("="*75)
 
     def save(self, output_path):
@@ -934,12 +937,13 @@ class FitDriver(object):
         if hasattr(self.problem, 'load'):
             self.problem.load(input_path)
 
-    def plot(self, output_path):
+    def plot(self, output_path, view=None):
         # print "calling fitter.plot"
         if hasattr(self.problem, 'plot'):
-            self.problem.plot(figfile=output_path)
+            self.problem.plot(figfile=output_path, view=view)
         if hasattr(self.fitter, 'plot'):
             self.fitter.plot(output_path=output_path)
+
 
 
 def _fill_defaults(options, settings):
@@ -978,3 +982,51 @@ FIT_DEFAULT_ID = SimplexFit.id
 
 assert FIT_DEFAULT_ID in FIT_ACTIVE_IDS
 assert all(f in FIT_AVAILABLE_IDS for f in FIT_ACTIVE_IDS)
+
+def fit(problem, method=FIT_DEFAULT_ID, verbose=False, **options):
+    """
+    Simplified fit interface.
+
+    Given a fit problem, the name of a fitter and the fitter options,
+    it will run the fit and return the best value and standard error of
+    the parameters.  If *verbose* is true, then the console monitor will
+    be enabled, showing progress through the fit and showing the parameter
+    standard error at the end of the fit, otherwise it is completely
+    silent.
+
+    Returns an *OptimizeResult* object containing "x" and "dx".  The
+    dream fitter also includes the "state" object, allowing for more
+    detailed uncertainty analysis.  Optimizer information such as the
+    stopping condition and the number of function evaluations are not
+    yet included.
+    """
+    from scipy.optimize import OptimizeResult
+
+    #verbose = True
+    if method not in FIT_AVAILABLE_IDS:
+        raise ValueError("unknown method %r not one of %s"
+                         % (method, ", ".join(sorted(FIT_ACTIVE_IDS))))
+    for fitclass in FITTERS:
+        if fitclass.id == method:
+            break
+    monitors = None if verbose else []  # default is step monitor
+    driver = FitDriver(
+        fitclass=fitclass, problem=problem, monitors=monitors,
+        **options)
+    x0 = problem.getp()
+    x, fx = driver.fit()
+    problem.setp(x)
+    dx = driver.stderr()
+    if verbose:
+        print("final chisq", problem.chisq_str())
+        driver.show_err()
+    result = OptimizeResult(
+        x=x, dx=driver.stderr(),
+        fun=fx,
+        success=True, status=0, message="successful termination",
+        #nit=0, # number of iterations
+        #nfev=0, # number of function evaluations
+        #njev, nhev # jacobian and hessian evaluations
+        #maxcv=0, # max constraint violation
+        )
+    return result

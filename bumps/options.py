@@ -1,11 +1,12 @@
 """
 Option parser for bumps command line
 """
+from __future__ import print_function
 
 import sys
 from .fitters import FITTERS, FIT_AVAILABLE_IDS, FIT_ACTIVE_IDS, FIT_DEFAULT_ID
 
-class ParseOpts:
+class ParseOpts(object):
     """
     Options parser.
 
@@ -98,28 +99,28 @@ def parse_int(value):
 
 
 FIT_FIELDS = dict(
-    starts= ("Starts", parse_int),
-    steps = ("Steps", parse_int),
-    samples = ("Samples", parse_int),
-    xtol = ("x tolerance", float),
-    ftol = ("f(x) tolerance", float),
-    stop = ("Stopping criteria", str),
-    thin = ("Thinning", parse_int),
-    burn = ("Burn-in Steps", parse_int),
-    pop = ("Population", float),
-    init = ("Initializer", ChoiceList("eps", "lhs", "cov", "random")),
-    CR = ("Crossover ratio", float),
-    F = ("Scale", float),
-    nT = ("# Temperatures", parse_int),
-    Tmin = ("Min temperature", float),
-    Tmax = ("Max temperature", float),
-    radius = ("Simplex radius", float),
-    trim = ("Burn in trimming", yesno)
+    starts=("Starts", parse_int),
+    steps=("Steps", parse_int),
+    samples=("Samples", parse_int),
+    xtol=("x tolerance", float),
+    ftol=("f(x) tolerance", float),
+    stop=("Stopping criteria", str),
+    thin=("Thinning", parse_int),
+    burn=("Burn-in Steps", parse_int),
+    pop=("Population", float),
+    init=("Initializer", ChoiceList("eps", "lhs", "cov", "random")),
+    CR=("Crossover ratio", float),
+    F=("Scale", float),
+    nT=("# Temperatures", parse_int),
+    Tmin=("Min temperature", float),
+    Tmax=("Max temperature", float),
+    radius=("Simplex radius", float),
+    trim=("Burn in trimming", yesno)
     )
 
 # Make sure all settings are parseable
 for fit in FITTERS:
-    assert all(opt in FIT_FIELDS for opt,_ in fit.settings), \
+    assert all(opt in FIT_FIELDS for opt, _ in fit.settings), \
         "Fitter %s contains unknown settings"%fit.id
 del fit
 
@@ -179,7 +180,7 @@ class FitConfig(object):
         #     fit.settings: available options: [(key,default value), ...]
         self.fitters = dict((fit.id, fit) for fit in FITTERS)
         self.names = dict((fit.id, fit.name) for fit in FITTERS)
-        self.settings = dict((fit.id,fit.settings) for fit in FITTERS)
+        self.settings = dict((fit.id, fit.settings) for fit in FITTERS)
         self.values = dict((fit.id, dict(fit.settings)) for fit in FITTERS)
         if not all(k in self.ids for k in active):
             raise ValueError("Some active fitters are not available")
@@ -233,7 +234,7 @@ class BumpsOpts(ParseOpts):
     MINARGS = 1
     FLAGS = set(("preview", "chisq", "profile", "time_model",
                  "simulate", "simrandom", "shake", "worker",
-                 "batch", "noshow", "overwrite", "parallel", "stepmon",
+                 "batch", "noshow", "overwrite", "stepmon",
                  "err", "cov", "entropy",
                  "remote", "staj", "edit", "mpi", "keep_best",
                  # passed in when app is a frozen image
@@ -242,10 +243,10 @@ class BumpsOpts(ParseOpts):
                  # bundled application as a python distribution with domain
                  # specific models pre-defined.
                  "i",
-                 ))
+                ))
     VALUES = set(("plot", "store", "resume", "fit", "noise", "seed", "pars",
                   "resynth", "transport", "notify", "queue", "time",
-                  "m", "c", "p", "trim",
+                  "m", "c", "p", "trim", "parallel", "view",
                   ))
     # Add in parameters from the fitters
     VALUES |= set(FIT_FIELDS.keys())
@@ -257,6 +258,8 @@ class BumpsOpts(ParseOpts):
     starts = "1"
     seed = ""
     time = "inf"
+    parallel = ""
+    view = None
     PLOTTERS = "linear", "log", "residuals"
     USAGE = """\
 Usage: bumps [options] modelfile [modelargs]
@@ -296,6 +299,9 @@ Options:
         output staj file when done
     --edit
         start the gui
+    --view=linear|log
+        one of the predefined problem views; reflectometry also has fresnel,
+        logfresnel, q4 and residuals
 
     --store=path
         output directory for plots and models
@@ -303,8 +309,8 @@ Options:
         if store already exists, replace it
     --resume=path    [dream]
         resume a fit from previous stored state
-    --parallel
-        run fit using multiprocessing for parallelism
+    --parallel=n
+        run fit using multiprocessing for parallelism; use --parallel=0 for all cpus
     --mpi
         run fit using MPI for parallelism (use command "mpirun -n cpus ...")
     --batch
@@ -377,7 +383,7 @@ Options:
         display this help
 """ % {'fitter': '|'.join(sorted(FIT_AVAILABLE_IDS)),
        'plotter': '|'.join(PLOTTERS),
-       }
+      }
 
 #    --transport=mp  {amqp|mp|mpi}
 #        use amqp/multiprocessing/mpi for parallel evaluation
@@ -411,8 +417,7 @@ Options:
             raise ValueError("unknown transport %s; use %s"
                              % (value, "|".join(self.TRANSPORTS)))
         self._transport = value
-    transport = property(
-        fget=lambda self: self._transport, fset=_set_transport)
+    transport = property(fget=lambda self: self._transport, fset=_set_transport)
     meshsteps = 40
 
 
@@ -427,5 +432,3 @@ def getopts():
     opts.seed = int(opts.seed) if opts.seed != "" else None
     opts.fit_config.set_from_cli(opts)
     return opts
-
-

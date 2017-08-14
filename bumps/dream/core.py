@@ -135,6 +135,7 @@ __all__ = ["Dream", "run_dream"]
 
 import sys
 import time
+from ctypes import c_double
 
 import numpy as np
 
@@ -144,12 +145,17 @@ from .gelman import gelman
 from .crossover import AdaptiveCrossover, LogAdaptiveCrossover
 from .diffev import de_step
 from .bounds import make_bounds_handler
+from .compiled import dll
+from .util import rng
 
 # Everything should be available in state, but lets be lazy for now
 LAST_TIME = 0
 
 
 def console_monitor(state, pop, logp):
+    """
+    Print progress of fit on the console.
+    """
     global LAST_TIME
     if state.generation == 1:
         print("#gen", "logp(x)",
@@ -200,6 +206,7 @@ class Dream(object):
     goalseek_optimizer = None
     goalseek_interval = 1e100  # close enough to never
     goalseek_minburn = 1000
+    state = None # type: MCMCDraw
 
     def __init__(self, **kw):
         self.monitor = console_monitor
@@ -219,14 +226,19 @@ class Dream(object):
             self._initialized = True
         self.state = state
         try:
-            run_dream(self, abort_test=abort_test)
+            _run_dream(self, abort_test=abort_test)
         except KeyboardInterrupt:
             pass
         return self.state
 
 
-def run_dream(dream, abort_test=lambda: False):
+def _run_dream(dream, abort_test=lambda: False):
+    """
+    Collect posterior distribution samples using DREAM sampler.
+    """
 
+    if dll:
+        dll.rand_init(rng.randint(1e9))
     # Step 1: Sample s points in the parameter space
     # [PAK] I moved this out of dream so that the user can use whatever
     # complicated sampling scheme they want.  Unfortunately, this means
@@ -275,28 +287,54 @@ def run_dream(dream, abort_test=lambda: False):
     next_goalseek = state.generation + dream.goalseek_interval \
         if dream.goalseek_optimizer else 1e100
 
+    if dll:
+        xtry = np.empty((n_chain, n_var), 'd')
+        step_alpha = np.empty(n_chain, 'd')
+        CR_used = np.empty(n_chain, 'd')
     #need_outliers_removed = True
     scale = 1.0
     #serial_time = parallel_time = 0.
     #last_time = time.time()
+
+    # Make sure that the pop we are drawing doesn't need to be copied before
+    # sending it to the compiled C code.
+    pop = state._draw_pop()
+    assert pop.ctypes.data == np.ascontiguousarray(pop).ctypes.data
+
     while state.draws < dream.draws + dream.burn:
 
         # Age the population using differential evolution
-        dream.CR.reset(Nsteps=dream.DE_steps, Npop=n_chain)
+        dream.CR.reset()
+        CR = np.ascontiguousarray(np.vstack((dream.CR.CR, dream.CR.weight)).T, 'd')
         for gen in range(dream.DE_steps):
 
             # Define the current locations and associated posterior densities
             xold, logp_old = x, logp
             pop = state._draw_pop()
+            #print(pop.ctypes.data, np.ascontiguousarray(pop).ctypes.data)
+            #print(pop)
+            #print("gen", gen, pop.shape)
 
             # Generate candidates for each sequence
-            xtry, step_alpha, used \
-                = de_step(n_chain, pop, dream.CR[gen],
-                          max_pairs=dream.DE_pairs,
-                          eps=dream.DE_eps,
-                          snooker_rate=dream.DE_snooker_rate,
-                          noise=dream.DE_noise,
-                          scale=scale)
+            if dll is None:
+                xtry, step_alpha, CR_used \
+                    = de_step(n_chain, pop, CR,
+                              max_pairs=dream.DE_pairs,
+                              eps=dream.DE_eps,
+                              snooker_rate=dream.DE_snooker_rate,
+                              noise=dream.DE_noise,
+                              scale=scale)
+            else:
+                dll.de_step(n_chain, n_var, len(CR),
+                            pop.ctypes, CR.ctypes,
+                            dream.DE_pairs,
+                            c_double(dream.DE_eps),
+                            c_double(dream.DE_snooker_rate),
+                            c_double(dream.DE_noise),
+                            c_double(scale),
+                            xtry.ctypes, step_alpha.ctypes, CR_used.ctypes)
+            #print("try", xtry)
+
 
             # PAK: Try a local optimizer every N generations
             if next_goalseek <= state.generation <= last_goalseek:
@@ -365,8 +403,8 @@ def run_dream(dream, abort_test=lambda: False):
 
             # Keep track of which CR ratios were successful
             if state.draws <= dream.burn:
-                dream.CR.update(gen, xold, x, used)
-            
+                dream.CR.update(xold, x, CR_used)
+
             if abort_test():
                 break
 
@@ -403,7 +441,7 @@ def run_dream(dream, abort_test=lambda: False):
 
         # Save update information
         state._update(R_stat=r_stat, CR_weight=dream.CR.weight)
-        
+
         if abort_test():
             break
 

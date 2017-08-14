@@ -17,9 +17,10 @@ from . import corrplot
 from .formatnum import format_value
 from .stats import var_stats, format_vars
 
-
 def plot_all(state, portion=1.0, figfile=None):
-    from pylab import figure, savefig, suptitle
+    from pylab import figure, savefig, suptitle, rcParams
+
+    figext = '.'+rcParams.get('savefig.format', 'png')
 
     draw = state.draw(portion=portion)
     all_vstats = var_stats(draw)
@@ -32,33 +33,33 @@ def plot_all(state, portion=1.0, figfile=None):
     if state.title:
         suptitle(state.title)
     if figfile is not None:
-        savefig(figfile+"-vars")
+        savefig(figfile+"-vars"+figext)
     figure()
     plot_trace(state, portion=portion)
     if state.title:
         suptitle(state.title)
     if figfile is not None:
-        savefig(figfile+"-trace")
+        savefig(figfile+"-trace"+figext)
     # Suppress R stat for now
     #figure()
     #plot_R(state, portion=portion)
     #if state.title:
     #    suptitle(state.title)
     #if figfile is not None:
-    #    savefig(figfile+"-R")
+    #    savefig(figfile+"-R"+format)
     figure()
     plot_logp(state, portion=portion)
     if state.title:
         suptitle(state.title)
     if figfile is not None:
-        savefig(figfile+"-logp")
+        savefig(figfile+"-logp"+figext)
     if draw.num_vars <= 25:
         figure()
         plot_corrmatrix(draw)
         if state.title:
             suptitle(state.title)
         if figfile is not None:
-            savefig(figfile+"-corr")
+            savefig(figfile+"-corr"+figext)
 
 
 def plot_vars(draw, all_vstats, **kw):
@@ -190,7 +191,7 @@ def _make_fig_colorbar(logp):
 
     ticks = (vmin, vmax)
     formatter = MinDigitsFormatter(vmin, vmax)
-    cb = mpl.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm, 
+    cb = mpl.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm,
                                    ticks=ticks, format=formatter,
                                    orientation='horizontal')
     #cb.set_ticks(ticks)
@@ -201,7 +202,7 @@ def _make_fig_colorbar(logp):
 
 
 def _make_logp_histogram(values, logp, nbins, ci, weights, cbar):
-    from numpy import (ones_like, searchsorted, linspace, cumsum, diff, 
+    from numpy import (ones_like, searchsorted, linspace, cumsum, diff,
                        argsort, array, hstack, exp)
     if weights is None:
         weights = ones_like(logp)
