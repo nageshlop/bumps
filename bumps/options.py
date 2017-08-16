@@ -259,6 +259,7 @@ class BumpsOpts(ParseOpts):
     seed = ""
     time = "inf"
     parallel = ""
+    trim = "true"
     view = None
     PLOTTERS = "linear", "log", "residuals"
     USAGE = """\
