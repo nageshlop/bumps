@@ -695,7 +695,7 @@ class DreamFit(FitBase):
             self.state.set_visible_vars(visible_vars)
         integer_vars = getattr(self.problem, 'integer_vars', None)
         if integer_vars is not None:
-            self.state.integer_vars(integer_vars)
+            self.state.set_integer_vars(integer_vars)
 
         x, fx = self.state.best()
 
@@ -736,7 +736,8 @@ class DreamFit(FitBase):
     def load(self, input_path):
         from .dream.state import load_state
         print("loading saved state (this might take awhile) ...")
-        self.state = load_state(input_path, report=100)
+        fn, labels = getattr(self.problem, 'derive_vars', (None, []))
+        self.state = load_state(input_path, report=100, derived_vars=len(labels))
 
     def save(self, output_path):
         self.state.save(output_path)

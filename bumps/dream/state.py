@@ -205,7 +205,7 @@ def loadtxt(file, report=0):
     return asarray(res)
 
 
-def load_state(filename, skip=0, report=0):
+def load_state(filename, skip=0, report=0, derived_vars=0):
     # Read chain file
     chain = loadtxt(filename+'-chain'+EXT)
 
@@ -243,18 +243,18 @@ def load_state(filename, skip=0, report=0):
     state._thin_index = 0
     state._thin_draws = state._gen_draws[(skip+1)*thinning-1::thinning]
     state._thin_logp = point[:, 0].reshape((Nthin, Npop))
-    state._thin_point = reshape(point[:, 1:], (Nthin, Npop, Nvar))
+    state._thin_point = reshape(point[:, 1:Nvar+1-derived_vars], (Nthin, Npop, -1))
     state._gen_current = state._thin_point[-1].copy()
     state._update_count = Nupdate
     state._update_index = 0
     state._update_draws = stats[:, 0]
-    state._update_R_stat = stats[:, 1:Nvar+1]
-    state._update_CR_weight = stats[:, Nvar+1:]
+    state._update_R_stat = stats[:, 1:Nvar+1-derived_vars]
+    state._update_CR_weight = stats[:, Nvar+1-derived_vars:]
     state._outliers = []
 
     bestidx = np.argmax(point[:, 0])
     state._best_logp = point[bestidx, 0]
-    state._best_x = point[bestidx, 1:]
+    state._best_x = point[bestidx, 1:Nvar+1-derived_vars]
     state._best_gen = 0
 
     return state
@@ -264,6 +264,7 @@ class MCMCDraw(object):
     """
     """
     _labels = None
+    _integer_vars = None  # boolean array of integer variables, or None
     title = None
 
     def __init__(self, Ngen, Nthin, Nupdate, Nvar, Npop, Ncr, thinning):
@@ -895,20 +896,12 @@ class MCMCDraw(object):
         #print(labels)
         #print(self._shown)
 
-    def integer_vars(self, labels):
+    def set_integer_vars(self, labels):
         """
-        Set variables to integer variables by rounding their values to the
-        nearest integer.
-
-        Note that this cannot be done ahead of time unless DREAM gets an
-        integer stepper, but it can be done before generating statistics.
-        DREAM on the OpenBUGS Asia model does not return the same results
-        as OpenBUGS, so the analysis of integer parameters should not yet
-        be trusted.  No other tests have been done to this point.
+        Indicate tha variables should be considered integer variables when
+        computing statistics.
         """
-        for var in labels:
-            idx = self.labels.index(var)
-            self._thin_point[:, :, idx] = np.round(self._thin_point[:, :, idx])
+        self._integer_vars = np.array([var in labels for var in self.labels])
 
     def derive_vars(self, fn, labels=None):
         """
@@ -970,6 +963,10 @@ class Draw(object):
         self._stats = None
         self.weights = None
         self.num_vars = len(self.labels)
+        if state._integer_vars is not None:
+            self.integers = state._integer_vars[vars] if vars else None
+        else:
+            self.integers = None
 
 
 def _sample(state, portion, vars, selection):

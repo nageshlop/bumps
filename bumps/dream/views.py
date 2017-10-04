@@ -35,9 +35,8 @@ def plot_all(state, portion=1.0, figfile=None):
     if figfile is not None:
         savefig(figfile+"-vars"+figext)
     figure()
-    plot_trace(state, portion=portion)
-    if state.title:
-        suptitle(state.title)
+    plot_traces(state, portion=portion)
+    suptitle("Parameter history" + (" for " + state.title if state.title else ""))
     if figfile is not None:
         savefig(figfile+"-trace"+figext)
     # Suppress R stat for now
@@ -108,7 +107,7 @@ def tile_axes(n, size=None):
 
 def plot_var(draw, vstats, var, cbar, nbins=30):
     values = draw.points[:, var].flatten()
-    _make_logp_histogram(values, draw.logp, nbins, vstats.p95,
+    _make_logp_histogram(values, draw.logp, nbins, vstats.p95_range,
                          draw.weights, cbar)
     _decorate_histogram(vstats)
 
@@ -116,15 +115,15 @@ def plot_var(draw, vstats, var, cbar, nbins=30):
 def _decorate_histogram(vstats):
     import pylab
     from matplotlib.transforms import blended_transform_factory as blend
+
+    l95, h95 = vstats.p95_range
+    l68, h68 = vstats.p68_range
+
     # Shade things inside 1-sigma
-    pylab.axvspan(vstats.p68[0], vstats.p68[1],
-                  color='gold', alpha=0.5, zorder=-1)
+    pylab.axvspan(l68, h68, color='gold', alpha=0.5, zorder=-1)
     # build transform with x=data, y=axes(0,1)
     ax = pylab.gca()
     transform = blend(ax.transData, ax.transAxes)
-
-    l95, h95 = vstats.p95
-    l68, h68 = vstats.p68
 
     def marker(symbol, position):
         if position < l95:
@@ -212,7 +211,7 @@ def _make_logp_histogram(values, logp, nbins, ci, weights, cbar):
     #open('/tmp/out','a').write("ci=%s, range=%s\n"
     #                           % (ci,(min(values),max(values))))
     edges = linspace(ci[0], ci[1], nbins+1)
-    idx = searchsorted(values, edges)
+    idx = searchsorted(values[1:-1], edges)
     weightsum = cumsum(weights)
     heights = diff(weightsum[idx])/weightsum[-1]  # normalized weights
 
@@ -239,6 +238,9 @@ def _make_logp_histogram(values, logp, nbins, ci, weights, cbar):
                 pidx = hstack((pidx, -1))
             y, z = y[pidx], z[pidx]
         pylab.pcolormesh(x, y, z, vmin=vmin, vmax=vmax, hold=True, cmap=cmap)
+    # Check for broken distribution
+    if not bins:
+        return
     centers, height, maxlikelihood = array(bins).T
     # Normalize maximum likelihood plot so it contains the same area as the
     # histogram, unless it is really spikey, in which case make sure it has
@@ -344,16 +346,29 @@ def plot_corr(draw, vars=(0, 1)):
     setp(ax_hist_y.get_yticklabels(), visible=False)
 
 
+def plot_traces(state, vars=None, portion=None):
+    from pylab import subplot, clf, subplots_adjust
+
+    if vars is None:
+        vars = list(range(min(state.Nvar, 6)))
+    clf()
+    nw, nh = tile_axes(len(vars))
+    subplots_adjust(hspace=0.0)
+    for k, var in enumerate(vars):
+        subplot(nw, nh, k+1)
+        plot_trace(state, var, portion)
+
+
 def plot_trace(state, var=0, portion=None):
     from pylab import plot, title, xlabel, ylabel
 
     draw, points, _ = state.chains()
+    label = state.labels[var]
     start = int((1-portion)*len(draw)) if portion else 0
     plot(arange(start, len(points))*state.thinning,
          squeeze(points[start:, state._good_chains, var]))
-    title('Parameter history for variable %d' % (var+1,))
     xlabel('Generation number')
-    ylabel('Parameter value')
+    ylabel(label)
 
 
 def plot_R(state, portion=None):
