@@ -4,6 +4,9 @@ Option parser for bumps command line
 from __future__ import print_function
 
 import sys
+
+import numpy as np
+
 from .fitters import FITTERS, FIT_AVAILABLE_IDS, FIT_ACTIVE_IDS, FIT_DEFAULT_ID
 
 class ParseOpts(object):
@@ -104,6 +107,7 @@ FIT_FIELDS = dict(
     samples=("Samples", parse_int),
     xtol=("x tolerance", float),
     ftol=("f(x) tolerance", float),
+    alpha=("p-value for convergence tests", float),
     stop=("Stopping criteria", str),
     thin=("Thinning", parse_int),
     burn=("Burn-in Steps", parse_int),
@@ -120,8 +124,10 @@ FIT_FIELDS = dict(
 
 # Make sure all settings are parseable
 for fit in FITTERS:
-    assert all(opt in FIT_FIELDS for opt, _ in fit.settings), \
-        "Fitter %s contains unknown settings"%fit.id
+    assert all(opt in FIT_FIELDS for opt, _ in fit.settings), (
+        "Fitter %s contains unknown settings %s"
+        %(fit.id, ', '.join(opt for opt, _ in sorted(fit.settings)
+                            if opt not in FIT_FIELDS)))
 del fit
 
 class FitConfig(object):
@@ -246,7 +252,7 @@ class BumpsOpts(ParseOpts):
                 ))
     VALUES = set(("plot", "store", "resume", "fit", "noise", "seed", "pars",
                   "resynth", "transport", "notify", "queue", "time",
-                  "m", "c", "p", "trim", "parallel", "view",
+                  "m", "c", "p", "trim", "parallel", "view", "alpha",
                   ))
     # Add in parameters from the fitters
     VALUES |= set(FIT_FIELDS.keys())
@@ -261,6 +267,7 @@ class BumpsOpts(ParseOpts):
     parallel = ""
     trim = "true"
     view = None
+    alpha = 0.01
     PLOTTERS = "linear", "log", "residuals"
     USAGE = """\
 Usage: bumps [options] modelfile [modelargs]
@@ -337,6 +344,8 @@ Options:
         minimum population diameter
     --ftol=1e-4     [de, amoeba]
         minimum population flatness
+    --alpha=0.01    [dream]
+        p-level for rejecting convergence (0=loose, 1=strict)
     --pop=10        [dream, de, rl, ps]
         population size
     --burn=100      [dream, pt]
@@ -430,6 +439,8 @@ def getopts():
     """
     opts = BumpsOpts(sys.argv)
     opts.resynth = int(opts.resynth)
-    opts.seed = int(opts.seed) if opts.seed != "" else None
+    # Set a random seed if none is given; want to know the seed so we can
+    # reproduce the run.  The seed needs to be saved to the monitor file.
+    opts.seed = int(opts.seed) if opts.seed else np.random.randint(1000000)
     opts.fit_config.set_from_cli(opts)
     return opts

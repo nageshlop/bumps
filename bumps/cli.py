@@ -552,7 +552,7 @@ def main():
         make_store(problem, opts, exists_handler=store_overwrite_query)
 
         # Show command line arguments and initial model
-        print("#", " ".join(sys.argv))
+        print("#", " ".join(sys.argv), "--seed=%d"%opts.seed)
         problem.show()
         if opts.stepmon:
             fid = open(problem.output_path + '.log', 'w')
