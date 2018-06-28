@@ -25,6 +25,7 @@ This module implements the Parameter View panel.
 """
 
 #==============================================================================
+from __future__ import print_function
 
 import wx
 import wx.dataview as dv
@@ -141,6 +142,11 @@ class ParametersModel(dv.PyDataViewModel):
             attr.SetColour('blue')
             attr.SetBold(True)
             return True
+        #try:
+        #    attr.SetColour(bluegray(node['depth']*32))
+        #    return True
+        #except AttributeError:
+        #    pass
         return False
 
     def GetValue(self, item, col):
@@ -172,13 +178,26 @@ class ParametersModel(dv.PyDataViewModel):
             else:
                 fitted = False
                 low, high = '', ''
-            mapper = { 
+            pathlen, depth = node["pathlen"], node["depth"]
+            DOT = u"\uFF65"  # half-width center dot
+            SIX_PER_EM = u"\u2006"
+            #FOUR_PER_EM = u"\u2005"
+            #HAIR_SPACE = u"\u200A" # very thin space
+            #BOX = u"\uFFED"  # half-width square
+            name_prefix = ""
+            #name_prefix = DOT*depth + BOX*(pathlen-depth-1) + HAIR_SPACE
+            path_parts = list(node["path"].split('.')[depth:])
+            path = (DOT+SIX_PER_EM)*depth + ".".join(path_parts)
+            #path = DOT*depth + ".".join(path_parts)
+            #path = BOX*depth + HAIR_SPACE + ".".join(path_parts)
+            #path = DOT*depth + (HAIR_SPACE + BOX + HAIR_SPACE).join(path_parts)
+            mapper = {
                 0 : fitted,
-                1 : str(par.name),
+                1 : name_prefix + str(par.name),
                 2 : str(nice(par.value)),
                 3 : low,
                 4 : high,
-                5 : str(node["path"]),
+                5 : path,
                 6 : str(node["link"]),
                 }
             return mapper[col]
@@ -349,12 +368,29 @@ def params_to_list(params, parent_uuid=None, output=None, path='M', links=None):
             new_id = None
             params_to_list(v, parent_uuid=new_id, output=output, path=path+"[%d]" % (i,), links=links)
     elif isinstance(params, BaseParameter):
+        # Determine the number of matching portions of last path and next path
+        # to determine "branching depth" if this were a nested structure.
+        last_path = output[-1]["path"].split('.') if output else []
+        next_path = path.split('.')
+        depth = 0
+        for old, new in zip(last_path, next_path):
+            if old != new:
+                break
+            else:
+                depth += 1
+
+        # Determine if parameter is linked to another parameter in the system
         link_path = links.get(id(params), "")
         if link_path == "":
             links[id(params)] = path
+
+        # Build a new item for the parameter table
         new_id = uuid_generate()
-        new_item = {"parent": parent_uuid, "id": new_id, "value": params, "path": path, "link": link_path}
+        new_item = {
+            "parent": parent_uuid, "id": new_id, "value": params,
+            "path": path, "link": link_path,
+            "pathlen": len(next_path), "depth": depth,
+            }
         output.append(new_item)
 
     return output
-
